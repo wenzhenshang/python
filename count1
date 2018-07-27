@@ -1,0 +1,31 @@
+# -*- coding: UTF-8 -*-
+import  sys,re,time
+from pymongo import  MongoClient
+reload(sys)
+sys.setdefaultencoding('utf-8')
+def write_file(filepath,string):
+     file=open(filepath,'a');
+     file.write(string)
+     file.close()
+
+def main():
+    mongodb=MongoClient('10.5.0.10',38000)
+    db=mongodb['test_interface']
+    dataTimes = []
+    for i in range(0,10):
+        dataTimes.append(time.strftime("%Y-%m-%d",time.localtime(time.time()-24*60*60*i)))
+
+    for dataTime in dataTimes:
+        questions=db.question.aggregate([{'$match':{'time':re.compile(dataTime),'refund_times':{'$exists':0},'is_test':{'$exists':0}}},{'$group':{'_id':'$patient_id','count':{'$sum':1}}},{'$sort':{'count':-1}}])
+        msg="************************时间：%s*************************\n"%(dataTime)
+        write_file('./patient_count.txt',msg)
+        for ques in questions:
+
+            phone1=db.patient_message.find({'_id':ques['_id']},{'phone':1,'_id':1})
+            for pp in phone1:
+                msg="患者id :%s   患者手机号码：%s  出现次数：%s\n"%(ques['_id'],pp['phone'],ques['count'])
+            write_file('./patient_count.txt',msg)
+
+
+if __name__ == "__main__":
+        main()
