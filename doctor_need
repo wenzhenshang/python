@@ -1,0 +1,56 @@
+# -*- coding: UTF-8 -*-
+from __future__ import division
+# from pymongo import MongoClient
+import time, re, sys
+from db import mongoConnect
+
+
+def main():
+    mongodb_db_query = mongoConnect('10.5.0.10', 38000, 'payask')
+    rectime = '2018-07-31'
+
+    """
+    #  统计医生金额
+    """
+    doctor_answers = mongodb_db_query.doctor_answer_record.aggregate([{"$match": {"answer_time": re.compile(rectime)}},{"$group": {"_id": {"doctor_id": "$doctor_id","doctor_name": "$doctor_name"},"count": {"$sum": 1},'fee': {"$sum": "$answer_fee"},"adopt": {"$sum": "$answer_adopted"}}}])
+    doctor_adopts = mongodb_db_query.doctor_answer_record.aggregate([{"$match": {'answer_time': re.compile(rectime), 'answer_adopted': 1}},{"$group": {'_id': '$doctor_id', 'adopt_fee': {"$sum": "$answer_adopted_fee"}}}])
+    doctorList = {}
+    # 拼装医生回答数据
+    for answer in doctor_answers:
+        doctorTemp = {'answer_num': 0, 'answer_fee': 0, 'doctor_name': '', 'doctor_id': '', 'adopt_num': 0,'adopt_fee': 0.0, 'pump_num': 0, 'pump_fee': 0.0}
+        doctorTemp['answer_num'] = answer['count']
+        doctorTemp['answer_fee'] = round(answer['fee'], 2)
+        doctorTemp['doctor_name'] = answer['_id']['doctor_name']
+        doctorTemp['doctor_id'] = answer['_id']['doctor_id']
+        doctorTemp['adopt_num'] = answer['adopt']
+        doctorTemp['adopted_rate'] = round(answer['adopt'] / answer['count'] * 100, 2)
+
+        # 获取医生追答的数据
+        doctor_pumps = mongodb_db_query.doctor_pumps_record.aggregate([{"$match": {'answer_time': re.compile(rectime), 'doctor_id': answer['_id']['doctor_id']}},{"$group": {'_id': '', 'count': {'$sum': 1}, 'answer_fee': {"$sum": "$answer_fee"}}}])
+        for pump in doctor_pumps:
+            doctor_pump = pump
+
+        doctorTemp['pump_num'] = doctor_pump['count']
+        doctorTemp['pump_fee'] = round(doctor_pump['answer_fee'], 2)
+
+        doctorList[answer['_id']['doctor_id']] = doctorTemp
+
+    # 统计医生的采纳费用
+    for adopt in doctor_adopts:
+        doctorList[adopt['_id']]['adopt_fee'] = round(adopt['adopt_fee'], 2)
+
+    doctors = []
+    for _, doctor in doctorList.items():
+        doctor['income'] = doctor['answer_fee'] + doctor['adopt_fee'] + doctor['pump_fee']
+        doctors.append(doctor)
+
+    answerData = {
+        'group': doctors
+    }
+
+    # return answerData
+    print  doctorList
+
+
+if __name__ == "__main__":
+    main()
